@@ -14,15 +14,16 @@ cv2.namedWindow("Dijkstra", cv2.WINDOW_AUTOSIZE)
 
 # Dijkstra Algorithm OpenCV fuunctions
 
+def draw_cell(coord, color):
+    x, y = coord
+    y = GRID_SIZE - 1 - y
+    top_left = (x * CELL_SIZE, y * CELL_SIZE)
+    bottom_right = ((x + 1) * CELL_SIZE - 1, (y + 1) * CELL_SIZE - 1)
+    cv2.rectangle(image, top_left, bottom_right, color, -1)
 
 def visualize_path(path):
-    for point in path:
-
-        x, y = point
-        y = GRID_SIZE - 1 - y
-        top_left = (x * CELL_SIZE, y * CELL_SIZE)
-        bottom_right = ((x + 1) * CELL_SIZE - 1, (y + 1) * CELL_SIZE - 1)
-        cv2.rectangle(image, top_left, bottom_right, (0, 200, 0), -1)
+    for coord in path:
+        draw_cell(coord, PATH_COLOR)
         cv2.imshow("Dijkstra", image)
         cv2.waitKey(50)
 
@@ -60,6 +61,9 @@ def backtrack(came_from, current):
 
 
 def dijkstra(start_point, goal_point):
+    draw_cell(start_point, START_COLOR)
+    draw_cell(goal_point, GOAL_COLOR)
+
     open_list = PriorityQueue()
     open_list.put((0, start_point))
     came_from = {}
@@ -87,6 +91,7 @@ def dijkstra(start_point, goal_point):
                 priority = new_cost
                 open_list.put((priority, neighbor))
                 came_from[neighbor] = current_node
+                draw_cell(neighbor, EXPLORED_COLOR)
 
     return [], float("inf")  # Goal not found
 
