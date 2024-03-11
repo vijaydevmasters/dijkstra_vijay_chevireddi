@@ -15,7 +15,7 @@ class MapDrawer:
         self.explored_color = (255, 0, 0)
         self.path_color = (255, 255, 0)
         self.inflated_color = (0, 0, 200)
-
+        
     def convert_to_image_coordinates(self, grid_x, grid_y):
         img_x = grid_x
         img_y = self.height - grid_y
@@ -56,10 +56,12 @@ class MapDrawer:
 
 
     def draw_cell(self, coord, color):
-        x, y = coord
-        y = self.height - y * self.cell_size  # Adjust for cell size and invert y-axis
-        x = x * self.cell_size  # Adjust x-coordinate for cell size
-        cv2.circle(self.image, (x, y), self.cell_size // 2, color, -1)
+        grid_x, grid_y = coord
+        # print(grid_x, grid_y)
+        # Draw the circle for the cell using the correct image coordinates
+        cv2.circle(self.image, (grid_x, grid_y),1,  color, -1)
+
+
 
     def visualize_path(self, path):
         for coord in path:
@@ -67,6 +69,15 @@ class MapDrawer:
             cv2.imshow("Dijkstra", self.image)
             cv2.waitKey(50)
 
+    def is_valid_neighbor(self, point):
+        # print(point)
+        x, y = point
+        if 0 <= x < self.width and 0 <= y < self.height and self.image[y - 1, x, 0] == 255:
+            return True
+        return False
+
+
+    
 # Initialize the MapDrawer
 grid_width = 1200
 grid_height = 500
@@ -97,20 +108,13 @@ def move_robot(position, action):
 
 
 def get_neighbors(position):
-    actions = {
-        (1, 0): 1,  # Right
-        (-1, 0): 1,  # Left
-        (0, -1): 1,  # Down
-        (0, 1): 1,  # Up
-        (1, 1): 1.4,  # Up-Right
-        (-1, 1): 1.4,  # Up-Left
-        (1, -1): 1.4,  # Down-Right
-        (-1, -1): 1.4,  # Down-Left
+    actions = {(1, 0): 1,(-1, 0): 1,(0, -1): 1,(0, 1): 1,(1, 1): 1.4,(-1, 1): 1.4,(1, -1): 1.4,(-1, -1): 1.4,
     }
     neighbors = []
     for action, cost in actions.items():
         new_position = move_robot(position, action)
-        neighbors.append((new_position, cost))
+        if map_drawer.is_valid_neighbor(new_position):
+            neighbors.append((new_position, cost))
     return neighbors
 
 
@@ -123,49 +127,70 @@ def backtrack(parent, current):
     return path
 
 
+def get_coordinate_input(prompt_message):
+    while True:
+        user_input = input(f"{prompt_message}: ")
+        
+        try:
+            input_x, input_y = map(int, user_input.split(','))
+            converted_x, converted_y = map_drawer.convert_to_image_coordinates(input_x, input_y)
+        except ValueError:
+            print("Invalid input format. Please enter coordinates in the format x,y.")
+            continue
+
+        image_y = map_drawer.height - converted_y
+        if 0 <= converted_x < map_drawer.width and 0 <= image_y < map_drawer.height and map_drawer.image[image_y, converted_x, 0] == 255:
+            return converted_x, converted_y
+        else:
+            print("Point is invalid or lies on an obstacle. Please try again.")
+
+
+def visualise_planning_backtracking(explored_nodes, path, goal):
+
+    explored_count = 0
+    cv2.circle(map_drawer.image, (goal_point[0], goal_point[1]), 5, (0, 0, 255), -1) # Goal Node
+    cv2.circle(map_drawer.image, (start_point[0], start_point[1]), 5, (255, 0, 0), -1) # Start Node
+    
+    for node in explored_nodes:
+        map_drawer.image[node[1], node[0]] = (168, 185, 203)
+        if explored_count % 160 == 0:
+            cv2.imshow("Planning with shortest path", map_drawer.image) # Drawing explored Nodes
+            cv2.waitKey(1)
+        explored_count += 1
+
+    for point in path:
+        cv2.circle(map_drawer.image, (point[0], point[1]), 2, (108, 79, 11), -1)
+        cv2.imshow("Planning with shortest path", map_drawer.image)
+        cv2.waitKey(1)
+
 def dijkstra(start_point, goal_point):
-    map_drawer.draw_cell(start_point, map_drawer.start_color)
-    map_drawer.draw_cell(goal_point, map_drawer.goal_color)
+    open_set = PriorityQueue()
+    open_set.put((0, start_point))
+    came_from = {}
+    cost_to_come = {start_point: 0}
+    explored = []
+    while not open_set.empty():
+        current_cost, current_node = open_set.get()
 
-    open_list = PriorityQueue()
-    open_list.put((0, start_point))
-    parent = {}
-    closed_list = {start_point: 0}
 
-    while not open_list.empty():
-        cv2.imshow('Dijkstra', map_drawer.image)
-        if cv2.waitKey(1) == ord('q'):
-            break
-        current_cost, current_node = open_list.get()
-
-        # As we cannot mutate elements of a tuple inside priority queue. Just skipping the non-updated elemets of the nodes in Open List.
-        if current_cost > closed_list.get(current_node, float("inf")):
+        if current_cost > cost_to_come.get(current_node, float('inf')):
             continue
 
         if current_node == goal_point:
-            path = backtrack(parent, current_node)
-            map_drawer.visualize_path(path)
-            return backtrack(parent, current_node), closed_list[current_node]
+            visualise_planning_backtracking(explored, backtrack(came_from, current_node), current_node)
+            return backtrack(came_from, current_node), cost_to_come[current_node]
 
         for neighbor, move_cost in get_neighbors(current_node):
-            new_cost = closed_list[current_node] + move_cost
-            if neighbor not in closed_list or new_cost < closed_list[neighbor]:
-                closed_list[neighbor] = new_cost
-                open_list.put((new_cost, neighbor))
-                parent[neighbor] = current_node
-                map_drawer.draw_cell(neighbor, map_drawer.explored_color)
+            new_cost = cost_to_come[current_node] + move_cost
+            if neighbor not in cost_to_come or new_cost < cost_to_come[neighbor]:
+                cost_to_come[neighbor] = new_cost
+                priority = new_cost
+                open_set.put((priority, neighbor))
+                came_from[neighbor] = current_node
+                explored.append(neighbor)
 
-    return [], float("inf")  # Goal not found
-
-
-# Get the start and goal points from the user
-x_s = int(input("Enter x-coordinate of start point of mobile robot: "))
-y_s = int(input("Enter y-coordinate of start point of mobile robot: "))
-x_g = int(input("Enter x-coordinate of goal point of mobile robot: "))
-y_g = int(input("Enter y-coordinate of goal point of mobile robot: "))
-
-start_point = (x_s, y_s)
-goal_point = (x_g, y_g)
+start_point = get_coordinate_input("Enter start point (x, y) in this way : 11,11 ")
+goal_point = get_coordinate_input("Enter goal point (x, y) in this way : 1190,400 ")
 
 path = dijkstra(start_point, goal_point)
 print(path)
@@ -175,4 +200,5 @@ while True:
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
+out.release()
 cv2.destroyAllWindows()
