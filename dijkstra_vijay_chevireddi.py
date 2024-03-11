@@ -4,11 +4,17 @@ import numpy as np
 import math
 
 class MapDrawer:
+    """
+    Handles drawing of the map, obstacles, and paths for pathfinding visualization.
+    """
     def __init__(self, width, height, cell_size=5):
+        # Initialize map properties
         self.width = width
         self.height = height
         self.cell_size = cell_size
+        # Create a white image for the map background
         self.image = np.ones((height, width, 3), dtype=np.uint8) * 255
+        # Define colors for different elements on the map
         self.obstacle_color = (0, 0, 0)
         self.start_color = (0, 0, 255)
         self.goal_color = (0, 255, 0)
@@ -17,15 +23,24 @@ class MapDrawer:
         self.inflated_color = (0, 0, 200)
         
     def convert_to_image_coordinates(self, grid_x, grid_y):
+        """
+        Convert grid coordinates to image coordinates (flipping the y-axis).
+        """
         img_x = grid_x
         img_y = self.height - grid_y
         return img_x, img_y
 
     def render_rectangle(self, lower_left_corner, upper_right_corner, color, fill=True):
+        """
+        Draw a rectangle on the map.
+        """
         fill_value = -1 if fill else 1
         cv2.rectangle(self.image, lower_left_corner, upper_right_corner, color, fill_value)
 
     def render_hexagon(self, center_point, side_length, color, border_thickness=1):
+        """
+        Draw a hexagon on the map.
+        """
         hexagon_vertices = []
         for i in range(6):
             angle_deg = 60 * i - 30
@@ -39,6 +54,9 @@ class MapDrawer:
             cv2.polylines(self.image, [np.array(hexagon_vertices)], isClosed=True, color=color, thickness=border_thickness)
 
     def add_obstacles_to_map(self, obstacle_list):
+        """
+        Interpret and draw obstacles on the map.
+        """
         for obstacle in obstacle_list:
             obstacle_shape = obstacle['type']
             obstacle_color = obstacle.get('fill_color', self.obstacle_color)
@@ -56,6 +74,9 @@ class MapDrawer:
 
 
     def draw_cell(self, coord, color):
+        """
+        Draw a cell on the map.
+        """
         grid_x, grid_y = coord
         # print(grid_x, grid_y)
         # Draw the circle for the cell using the correct image coordinates
@@ -70,6 +91,9 @@ class MapDrawer:
             cv2.waitKey(50)
 
     def is_valid_neighbor(self, point):
+        """
+        Check if a point is a valid, unobstructed map location.
+        """
         # print(point)
         x, y = point
         if 0 <= x < self.width and 0 <= y < self.height and self.image[y - 1, x, 0] == 255:
@@ -123,7 +147,7 @@ def backtrack(parent, current):
     while current in parent:
         current = parent[current]
         path.append(current)
-    path.reverse()
+    path.reverse()# Reverse the path to start->goal order
     return path
 
 
@@ -155,33 +179,38 @@ def visualise_planning_backtracking(explored_nodes, path, goal):
         map_drawer.image[node[1], node[0]] = (168, 185, 203)
         if explored_count % 160 == 0:
             cv2.imshow("Planning with shortest path", map_drawer.image) # Drawing explored Nodes
+            out.write(map_drawer.image)
             cv2.waitKey(1)
         explored_count += 1
 
     for point in path:
         cv2.circle(map_drawer.image, (point[0], point[1]), 2, (108, 79, 11), -1)
         cv2.imshow("Planning with shortest path", map_drawer.image)
+        out.write(map_drawer.image)
         cv2.waitKey(1)
 
 def dijkstra(start_point, goal_point):
+    # Priority queue for the open set with initial node having cost 0
     open_set = PriorityQueue()
     open_set.put((0, start_point))
-    came_from = {}
-    cost_to_come = {start_point: 0}
+    came_from = {}# To reconstruct the path
+    cost_to_come = {start_point: 0} # Cost from start to the node
     explored = []
     while not open_set.empty():
         current_cost, current_node = open_set.get()
 
-
+          # As we cannot mutate elements of a tuple inside priority queue. Just skipping the unupdated elemets of the nodes in Open List.
         if current_cost > cost_to_come.get(current_node, float('inf')):
             continue
 
         if current_node == goal_point:
+            # If goal is reached, visualize the result and return the path and its cost
             visualise_planning_backtracking(explored, backtrack(came_from, current_node), current_node)
             return backtrack(came_from, current_node), cost_to_come[current_node]
 
         for neighbor, move_cost in get_neighbors(current_node):
             new_cost = cost_to_come[current_node] + move_cost
+             # If new cost is lower, update the cost and path for this neighbor
             if neighbor not in cost_to_come or new_cost < cost_to_come[neighbor]:
                 cost_to_come[neighbor] = new_cost
                 priority = new_cost
@@ -189,16 +218,22 @@ def dijkstra(start_point, goal_point):
                 came_from[neighbor] = current_node
                 explored.append(neighbor)
 
+# Start Point
 start_point = get_coordinate_input("Enter start point (x, y) in this way : 11,11 ")
+# Goal Point
 goal_point = get_coordinate_input("Enter goal point (x, y) in this way : 1190,400 ")
+
+# Output Video
+fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+out = cv2.VideoWriter('creddy_video.mp4', fourcc, 40.0, (map_drawer.width, map_drawer.height))
 
 path = dijkstra(start_point, goal_point)
 print(path)
 
 while True:
     cv2.imshow('Dijkstra', map_drawer.image)
+    out.write(map_drawer.image)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
-
 out.release()
 cv2.destroyAllWindows()
